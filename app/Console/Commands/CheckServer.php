@@ -56,8 +56,10 @@ class CheckServer extends Command
         $serverService = new ServerService();
         $servers = $serverService->getAllServers();
         foreach ($servers as $server) {
-            if ($server['parent_id']) continue;
-            if (!$server['show']) continue; // 过滤掉 show=0 的节点
+            if ($server['parent_id'])
+                continue;
+            if (!$server['show'])
+                continue; // 过滤掉 show=0 的节点
 
             // 检查节点是否掉线 (超过300秒未更新)
             $isOffline = $server['last_check_at'] && (time() - $server['last_check_at']) > 300;
@@ -99,23 +101,29 @@ class CheckServer extends Command
     private function sendServerReport()
     {
         // 检查是否启用节点状态报告
-        $reportEnabled = (int)config('v2board.server_status_report_hour', 1);
+        $reportEnabled = (int) config('v2board.server_status_report_hour', 1);
         if ($reportEnabled === 0) {
             // 如果设置为0，则不发送报告
             return;
         }
 
-        // 计算报告发送间隔（小时转换为秒）
-        $reportInterval = $reportEnabled * 3600;
-        
-        // 使用缓存键记录上次发送报告的时间
-        $lastReportKey = CacheKey::get('SERVER_STATUS_LAST_REPORT_TIME', null);
-        $lastReportTime = Cache::get($lastReportKey, 0);
-        $currentTime = time();
+        // 使用整除小时的方式判断是否应该发送报告
+        // 这样可以确保在固定的整点时间发送，避免时间漂移
+        $currentHour = (int) date('G'); // 当前小时 (0-23)
 
-        // 检查是否达到发送间隔
-        if (($currentTime - $lastReportTime) < $reportInterval) {
-            // 未达到发送间隔，跳过发送
+        // 使用缓存键记录上次发送报告的小时
+        $lastReportKey = CacheKey::get('SERVER_STATUS_LAST_REPORT_TIME', null);
+        $lastReportHour = Cache::get($lastReportKey, -1);
+
+        // 只在整除的小时发送（例如间隔4小时，则在0、4、8、12、16、20点发送）
+        if ($currentHour % $reportEnabled !== 0) {
+            // 当前小时不是应该发送的时间点，跳过
+            return;
+        }
+
+        // 检查当前小时是否已经发送过
+        if ($lastReportHour === $currentHour) {
+            // 这个小时已经发送过了，跳过
             return;
         }
 
@@ -129,8 +137,10 @@ class CheckServer extends Command
         $offlineList = [];
 
         foreach ($servers as $server) {
-            if ($server['parent_id']) continue;
-            if (!$server['show']) continue; // 过滤掉 show=0 的节点
+            if ($server['parent_id'])
+                continue;
+            if (!$server['show'])
+                continue; // 过滤掉 show=0 的节点
 
             $totalServers++;
             // 检查节点是否在线 (超过300秒未更新则认为掉线)
@@ -166,8 +176,8 @@ class CheckServer extends Command
         // 发送报告给管理员
         $telegramService = new TelegramService();
         $telegramService->sendMessageWithAdmin($message);
-        
-        // 更新最后发送报告的时间
-        Cache::put($lastReportKey, $currentTime, $reportInterval * 2); // 缓存时间设为报告间隔的两倍，确保记录不会提前过期
+
+        // 更新最后发送报告的小时
+        Cache::put($lastReportKey, $currentHour, 3600); // 缓存1小时
     }
 }
