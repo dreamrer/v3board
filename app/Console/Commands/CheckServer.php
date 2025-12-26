@@ -91,9 +91,22 @@ class CheckServer extends Command
                     }
                 }
             } else {
-                // 节点在线，重置掉线计数
+                // 节点在线，检查是否需要发送恢复通知
+                $notifiedKey = $offlineCountKey . '_NOTIFIED';
+                if (Cache::has($notifiedKey)) {
+                    // 之前发送过掉线通知，现在恢复了，发送恢复通知
+                    $telegramService = new TelegramService();
+                    $message = sprintf(
+                        "🟢 节点恢复通知\n----\n📍 节点名称：%s\n🆔 节点ID：%d\n✅ 节点已恢复正常\n",
+                        $server['name'],
+                        $server['id']
+                    );
+                    $telegramService->sendMessageWithAdmin($message);
+                }
+
+                // 重置掉线计数和通知标记
                 Cache::forget($offlineCountKey);
-                Cache::forget(self::OFFLINE_COUNT_KEY_PREFIX . $server['type'] . '_' . $server['id'] . '_NOTIFIED');
+                Cache::forget($notifiedKey);
             }
         }
     }
